@@ -16,13 +16,14 @@ import (
 )
 
 const (
-	version      = "0.0.1-dev"
 	defaultAPI   = "https://app.asana.com/api/1.0"
 	docsURL      = "https://github.com/koinunopochi/asana-cli-for-agents/tree/main/docs"
 	defaultLimit = 50
 	maxLimit     = 100
 	taskFields   = "gid,name,notes,completed,assignee,projects,memberships,custom_fields,start_on,due_on,created_at,modified_at"
 )
+
+var version = "0.0.1-dev"
 
 type client struct {
 	httpClient       *http.Client
@@ -690,6 +691,9 @@ Write (always requires --confirm):
 
 Output:
   JSON is the default. Add --pretty for human-readable JSON.
+
+Meta:
+  version | --version               Show the build version.
 
 Detailed documentation:
   `+docsURL+`

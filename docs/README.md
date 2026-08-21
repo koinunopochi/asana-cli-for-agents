@@ -27,6 +27,7 @@ Asana MCP connections.
 | Task details and lists | `asana task get` / `asana task list` | [commands.md](commands.md#task-reads) |
 | Task search | `asana task search` | [commands.md](commands.md#task-search) |
 | Task mutation | `asana task create` / `update` / `complete` | [commands.md](commands.md#task-writes) |
+| Download or publish a release | GitHub Releases | [releases.md](releases.md) |
 
 ## Official references
 

@@ -100,6 +100,10 @@ func run(args []string, out, errOut io.Writer) int {
 		return runSection(cl, opts, out, errOut)
 	case "user":
 		return runUser(cl, opts, out, errOut)
+	case "team":
+		return runTeam(cl, opts, out, errOut)
+	case "field":
+		return runField(cl, opts, out, errOut)
 	case "task":
 		return runTask(cl, opts, out, errOut)
 	default:
@@ -203,8 +207,17 @@ func runWorkspace(c *client, opts options, out, errOut io.Writer) int {
 }
 
 func runProject(c *client, opts options, out, errOut io.Writer) int {
+	const usage = "usage: asana project list|get|fields|create|add-field"
 	if len(opts.args) == 0 {
-		return usageError(errOut, errors.New("usage: asana project list|get <GID>"))
+		return usageError(errOut, errors.New(usage))
+	}
+	switch opts.args[0] {
+	case "create":
+		return runProjectCreate(c, opts, out, errOut)
+	case "fields":
+		return runProjectFields(c, opts, out, errOut)
+	case "add-field":
+		return runProjectAddField(c, opts, out, errOut)
 	}
 	allowed := map[string]bool{"format": true, "pretty": true, "workspace": true, "limit": true, "offset": true}
 	if opts.args[0] == "list" {
@@ -232,12 +245,95 @@ func runProject(c *client, opts options, out, errOut io.Writer) int {
 		q := url.Values{"opt_fields": []string{"gid,name,notes,archived,public,owner,team,workspace,created_at,modified_at"}}
 		return executeRead(c, opts, out, "GET", "/projects/"+escapePath(opts.args[1]), q, nil)
 	}
-	return usageError(errOut, errors.New("usage: asana project list|get <GID>"))
+	return usageError(errOut, errors.New(usage))
+}
+
+func runProjectCreate(c *client, opts options, out, errOut io.Writer) int {
+	allowed := map[string]bool{"confirm": true, "format": true, "pretty": true, "workspace": true, "team": true, "name": true, "notes": true, "default-view": true, "color": true, "privacy-setting": true}
+	if len(opts.args) != 1 {
+		return usageError(errOut, errors.New("usage: asana project create --name NAME [--workspace GID] [--team GID] --confirm"))
+	}
+	if err := requireOptions(opts, allowed); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := requireConfirm(opts); err != nil {
+		return usageError(errOut, err)
+	}
+	name, err := requiredValue(opts, "name")
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	workspace, err := workspaceValue(c, opts)
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	data := map[string]any{"name": name, "workspace": workspace}
+	for option, field := range map[string]string{"team": "team", "notes": "notes", "default-view": "default_view", "color": "color", "privacy-setting": "privacy_setting"} {
+		if value, ok := opts.values[option]; ok {
+			data[field] = value
+		}
+	}
+	return executeWrite(c, opts, out, "POST", "/projects", map[string]any{"data": data})
+}
+
+func runProjectFields(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) != 2 {
+		return usageError(errOut, errors.New("usage: asana project fields <PROJECT_GID> [--limit N] [--offset TOKEN]"))
+	}
+	if err := requireOptions(opts, map[string]bool{"format": true, "pretty": true, "limit": true, "offset": true}); err != nil {
+		return usageError(errOut, err)
+	}
+	q, err := pagingQuery(opts)
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	q.Set("opt_fields", "gid,is_important,custom_field.gid,custom_field.name,custom_field.resource_subtype,custom_field.enum_options")
+	return executeRead(c, opts, out, "GET", "/projects/"+escapePath(opts.args[1])+"/custom_field_settings", q, nil)
+}
+
+func runProjectAddField(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) != 2 {
+		return usageError(errOut, errors.New("usage: asana project add-field <PROJECT_GID> --field GID|--field-json JSON [--important] --confirm"))
+	}
+	allowed := map[string]bool{"confirm": true, "format": true, "pretty": true, "field": true, "field-json": true, "important": true, "insert-before": true, "insert-after": true}
+	if err := requireOptions(opts, allowed); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := requireConfirm(opts); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := exclusiveOptions(opts, "insert-before", "insert-after"); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := exclusiveOptions(opts, "field", "field-json"); err != nil {
+		return usageError(errOut, err)
+	}
+	data := map[string]any{}
+	if value, ok := opts.values["field"]; ok {
+		data["custom_field"] = value
+	} else if encoded, ok := opts.values["field-json"]; ok {
+		var field map[string]any
+		if err := json.Unmarshal([]byte(encoded), &field); err != nil {
+			return usageError(errOut, fmt.Errorf("--field-json must be a JSON object: %w", err))
+		}
+		data["custom_field"] = field
+	} else {
+		return usageError(errOut, errors.New("--field or --field-json is required"))
+	}
+	if value, ok := opts.bools["important"]; ok {
+		data["is_important"] = value
+	}
+	setDataValue(data, opts, "insert-before", "insert_before")
+	setDataValue(data, opts, "insert-after", "insert_after")
+	return executeWrite(c, opts, out, "POST", "/projects/"+escapePath(opts.args[1])+"/addCustomFieldSetting", map[string]any{"data": data})
 }
 
 func runSection(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) > 0 && opts.args[0] == "create" {
+		return runSectionCreate(c, opts, out, errOut)
+	}
 	if len(opts.args) != 2 || opts.args[0] != "list" {
-		return usageError(errOut, errors.New("usage: asana section list <PROJECT_GID> [--limit N] [--offset TOKEN]"))
+		return usageError(errOut, errors.New("usage: asana section list|create <PROJECT_GID>"))
 	}
 	if err := requireOptions(opts, map[string]bool{"format": true, "pretty": true, "limit": true, "offset": true}); err != nil {
 		return usageError(errOut, err)
@@ -248,6 +344,59 @@ func runSection(c *client, opts options, out, errOut io.Writer) int {
 	}
 	q.Set("opt_fields", "gid,name,project,created_at,modified_at")
 	return executeRead(c, opts, out, "GET", "/projects/"+escapePath(opts.args[1])+"/sections", q, nil)
+}
+
+func runSectionCreate(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) != 2 {
+		return usageError(errOut, errors.New("usage: asana section create <PROJECT_GID> --name NAME [--insert-before GID|--insert-after GID] --confirm"))
+	}
+	if err := requireOptions(opts, map[string]bool{"confirm": true, "format": true, "pretty": true, "name": true, "insert-before": true, "insert-after": true}); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := requireConfirm(opts); err != nil {
+		return usageError(errOut, err)
+	}
+	if err := exclusiveOptions(opts, "insert-before", "insert-after"); err != nil {
+		return usageError(errOut, err)
+	}
+	name, err := requiredValue(opts, "name")
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	data := map[string]any{"name": name}
+	setDataValue(data, opts, "insert-before", "insert_before")
+	setDataValue(data, opts, "insert-after", "insert_after")
+	return executeWrite(c, opts, out, "POST", "/projects/"+escapePath(opts.args[1])+"/sections", map[string]any{"data": data})
+}
+
+func runTeam(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) != 1 || opts.args[0] != "list" {
+		return usageError(errOut, errors.New("usage: asana team list [--workspace GID] [--limit N] [--offset TOKEN]"))
+	}
+	return runWorkspaceList(c, opts, out, errOut, "/teams", "gid,name,description")
+}
+
+func runField(c *client, opts options, out, errOut io.Writer) int {
+	if len(opts.args) != 1 || opts.args[0] != "list" {
+		return usageError(errOut, errors.New("usage: asana field list [--workspace GID] [--limit N] [--offset TOKEN]"))
+	}
+	return runWorkspaceList(c, opts, out, errOut, "/custom_fields", "gid,name,resource_subtype,enum_options")
+}
+
+func runWorkspaceList(c *client, opts options, out, errOut io.Writer, suffix, fields string) int {
+	if err := requireOptions(opts, map[string]bool{"format": true, "pretty": true, "workspace": true, "limit": true, "offset": true}); err != nil {
+		return usageError(errOut, err)
+	}
+	workspace, err := workspaceValue(c, opts)
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	q, err := pagingQuery(opts)
+	if err != nil {
+		return usageError(errOut, err)
+	}
+	q.Set("opt_fields", fields)
+	return executeRead(c, opts, out, "GET", "/workspaces/"+escapePath(workspace)+suffix, q, nil)
 }
 
 func runUser(c *client, opts options, out, errOut io.Writer) int {
@@ -562,7 +711,7 @@ func parseOptions(args []string) (options, error) {
 
 func isBooleanOption(name string) bool {
 	switch name {
-	case "confirm", "pretty", "completed":
+	case "confirm", "pretty", "completed", "important":
 		return true
 	default:
 		return false
@@ -588,6 +737,21 @@ func requireConfirm(opts options) error {
 		return errors.New("write operation requires --confirm")
 	}
 	return nil
+}
+
+func exclusiveOptions(opts options, first, second string) error {
+	_, hasFirst := opts.values[first]
+	_, hasSecond := opts.values[second]
+	if hasFirst && hasSecond {
+		return fmt.Errorf("--%s and --%s cannot be used together", first, second)
+	}
+	return nil
+}
+
+func setDataValue(data map[string]any, opts options, option, field string) {
+	if value, ok := opts.values[option]; ok {
+		data[field] = value
+	}
 }
 
 func requiredValue(opts options, name string) (string, error) {
@@ -679,11 +843,17 @@ Read:
   me                              Show the authenticated user
   workspace list                  List accessible workspaces
   project list|get <GID>          List or inspect projects
+  project fields <PROJECT_GID>    List custom fields (list-view columns) on a project
   section list <PROJECT_GID>     List project sections
+  team list                       List teams in a workspace
+  field list                      List custom fields in a workspace
   user list                       List workspace users
   task get|list|search            Inspect or search tasks
 
 Write (always requires --confirm):
+  project create                  Create a project
+  project add-field               Add a custom field (list-view column) to a project
+  section create                  Add a section (board column) to a project
   task create|update|complete     Create or change a task
   task comment                    Add a task comment
   task add-project                Add a task to a project or section
@@ -710,9 +880,34 @@ func writeCommandHelp(command string, out io.Writer) {
 	case "workspace":
 		text = "Usage: asana workspace list [--limit N] [--offset TOKEN]\n\nList accessible workspaces.\n"
 	case "project":
-		text = "Usage:\n  asana project list [--workspace GID] [--limit N]\n  asana project get <GID>\n\nList or inspect projects.\n"
+		text = `Usage:
+  asana project list [--workspace GID] [--limit N]
+  asana project get <GID>
+  asana project fields <PROJECT_GID> [--limit N]
+  asana project create --name NAME [--workspace GID] [--team GID] [--notes TEXT]
+      [--default-view list|board|calendar|timeline] [--color COLOR]
+      [--privacy-setting public_to_workspace|private_to_team|private] --confirm
+  asana project add-field <PROJECT_GID> --field FIELD_GID [--important]
+      [--insert-before SETTING_GID|--insert-after SETTING_GID] --confirm
+  asana project add-field <PROJECT_GID> --field-json JSON [--important] --confirm
+
+--team is required when the workspace is an organization; find it with
+asana team list. --field takes a GID from asana field list. --field-json creates
+a new custom field and is sent unchanged as custom_field; include the required
+workspace and resource_subtype. The insert options take
+a custom field setting GID from asana project fields. Writes require --confirm.
+`
 	case "section":
-		text = "Usage: asana section list <PROJECT_GID> [--limit N] [--offset TOKEN]\n\nList sections in a project.\n"
+		text = `Usage:
+  asana section list <PROJECT_GID> [--limit N] [--offset TOKEN]
+  asana section create <PROJECT_GID> --name NAME [--insert-before SECTION_GID|--insert-after SECTION_GID] --confirm
+
+Sections are the columns of a board view. Writes require --confirm.
+`
+	case "team":
+		text = "Usage: asana team list [--workspace GID] [--limit N] [--offset TOKEN]\n\nList teams in a workspace.\n"
+	case "field":
+		text = "Usage: asana field list [--workspace GID] [--limit N] [--offset TOKEN]\n\nList custom fields in a workspace.\n"
 	case "user":
 		text = "Usage: asana user list [--workspace GID] [--limit N] [--offset TOKEN]\n\nList users in a workspace.\n"
 	case "task":

@@ -47,8 +47,9 @@ Detailed operator and agent guidance lives in [docs/README.md](docs/README.md).
 ## Read and write safety
 
 Read commands are available without an extra confirmation. Task creation,
-updates, completion, comments, project membership changes, and custom-field
-changes require the wrapper-specific `--confirm` flag. The flag is not passed
+updates, completion, comments, project membership changes, custom-field
+changes, project creation, section creation, and adding custom fields to a
+project require the wrapper-specific `--confirm` flag. The flag is not passed
 to Asana; it is the local safety boundary.
 
 The CLI intentionally does not provide a delete command in its initial scope.

@@ -27,6 +27,43 @@ asana section list PROJECT_GID
 
 `--workspace` may be omitted when `ASANA_DEFAULT_WORKSPACE_GID` is set.
 
+## Team and custom field reads
+
+```bash
+asana team list --workspace WORKSPACE_GID
+asana field list --workspace WORKSPACE_GID
+asana project fields PROJECT_GID
+```
+
+`team list` finds the team GID required to create a project in an
+organization. `field list` finds existing workspace custom fields.
+`project fields` lists the custom field settings on a project; each setting GID
+can be used as an insert position for `project add-field`.
+
+## Project and section writes
+
+All commands in this section require `--confirm`.
+
+```bash
+asana project create --workspace WORKSPACE_GID --team TEAM_GID --name "Project" --default-view board --confirm
+asana section create PROJECT_GID --name "Doing" --confirm
+asana section create PROJECT_GID --name "Review" --insert-after SECTION_GID --confirm
+asana project add-field PROJECT_GID --field FIELD_GID --important --confirm
+asana project add-field PROJECT_GID --field-json '{"workspace":"WORKSPACE_GID","name":"Priority","resource_subtype":"enum","enum_options":[{"name":"High"},{"name":"Low"}]}' --confirm
+```
+
+- Board-view columns are sections; add them with `section create`.
+- List-view columns are custom fields; add them with `project add-field`.
+- `--team` is required when the workspace is an organization.
+- `--field-json` creates a new custom field. The CLI sends the JSON object
+  unchanged as `custom_field`; include the required `workspace` and
+  `resource_subtype` yourself.
+- `--insert-before` and `--insert-after` are mutually exclusive. For sections
+  they take a section GID; for `add-field` they take a custom field setting GID.
+
+The CLI has no project, section, or custom field deletion command. State the
+target and intended structure before adding `--confirm`.
+
 ## User reads
 
 ```bash
@@ -83,5 +120,8 @@ filters; use `asana task search --help` for the current command surface.
 ## Official references
 
 - [Task API reference](https://developers.asana.com/reference/tasks)
+- [Create a project](https://developers.asana.com/reference/createproject)
+- [Create a section in a project](https://developers.asana.com/reference/createsectionforproject)
+- [Add a custom field to a project](https://developers.asana.com/reference/addcustomfieldsettingforproject)
 - [Search tasks in a workspace](https://developers.asana.com/reference/searchtasksforworkspace)
 - [Dates and times](https://developers.asana.com/docs/dates-and-times)

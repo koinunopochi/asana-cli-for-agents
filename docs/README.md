@@ -12,7 +12,8 @@ The CLI is a thin REST API client for AI-managed Asana operations. It handles:
 - bounded reads with JSON output;
 - task, project, section, workspace, and user lookup;
 - task creation options for parent tasks, dates, assignees, and completed records;
-- explicit confirmation for task mutations.
+- project creation, sections, and project custom fields;
+- explicit confirmation for every mutation.
 
 It does not manage developer apps, issue tokens, workspace permissions, or
 Asana MCP connections.
@@ -24,6 +25,8 @@ Asana MCP connections.
 | Current user | `asana me` | [commands.md](commands.md#me) |
 | Workspaces | `asana workspace list` | [commands.md](commands.md#workspace) |
 | Projects and sections | `asana project` / `asana section` | [commands.md](commands.md#project-and-section) |
+| Teams and custom fields | `asana team list` / `asana field list` | [commands.md](commands.md#team-and-custom-field-reads) |
+| Project creation and columns | `asana project create` / `section create` / `project add-field` | [commands.md](commands.md#project-and-section-writes) |
 | Task details and lists | `asana task get` / `asana task list` | [commands.md](commands.md#task-reads) |
 | Task search | `asana task search` | [commands.md](commands.md#task-search) |
 | Task mutation | `asana task create` / `update` / `complete` | [commands.md](commands.md#task-writes) |
